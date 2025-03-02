@@ -2,13 +2,13 @@
 
 namespace luya;
 
-use yii\base\Object;
 use luya\base\HookEvent;
+use yii\base\BaseObject;
 
 /**
  * Simple Hooking mechanism.
  *
- * Attaching callables or object methods to the Hook mechnism in your controller, block or elsewhere.
+ * Attaching callables or object methods to the Hook mechnism in your controller, block or elsewhere. Read more in the guide [[concept-hooks.md]].
  *
  * A simple string output behavior:
  *
@@ -42,7 +42,7 @@ use luya\base\HookEvent;
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
-class Hook extends Object
+class Hook extends BaseObject
 {
     private static $_hooks = [];
 
@@ -58,7 +58,7 @@ class Hook extends Object
     public static function on($name, $value, $prepend = false)
     {
         $object = new HookEvent(['handler' => $value]);
-        
+
         if ($prepend) {
             array_unshift(static::$_hooks[$name], $object);
         } else {
@@ -77,12 +77,12 @@ class Hook extends Object
     {
         if (isset(static::$_hooks[$name])) {
             $events = [];
-            
+
             foreach (static::$_hooks[$name] as $hookEvent) {
                 if ($hookEvent->isHandled) {
                     continue;
                 }
-                
+
                 if (is_array($hookEvent->handler)) {
                     $hookEvent->output = call_user_func_array($hookEvent->handler, [$hookEvent]);
                 } elseif (is_callable($hookEvent->handler)) {
@@ -90,9 +90,9 @@ class Hook extends Object
                 } else {
                     throw new Exception("The provided hook event handler is not valid.");
                 }
-                
+
                 $hookEvent->isHandled = true;
-                
+
                 if ($hookEvent->isValid) {
                     $events[] = $hookEvent;
                 }
@@ -103,7 +103,7 @@ class Hook extends Object
 
         return [];
     }
-    
+
     /**
      * Get the string output of the hooks.
      *
@@ -116,10 +116,10 @@ class Hook extends Object
         foreach (self::trigger($name) as $hook) {
             $buffer[] = $hook->output;
         }
-        
+
         return implode("", $buffer);
     }
-    
+
     /**
      * Get the array output of iteration hooks.
      *
@@ -132,7 +132,7 @@ class Hook extends Object
         foreach (self::trigger($name) as $hook) {
             $buffer = array_merge($buffer, $hook->getIterations());
         }
-        
+
         return $buffer;
     }
 }

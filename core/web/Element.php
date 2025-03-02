@@ -2,9 +2,9 @@
 
 namespace luya\web;
 
-use Yii;
 use luya\Exception;
 use luya\helpers\FileHelper;
+use Yii;
 
 /**
  * HTML Element Component.
@@ -61,6 +61,10 @@ use luya\helpers\FileHelper;
  *
  * The styleguide will now insert the mocked values instead of generic values.
  *
+ * > Important: If you want to pass database values from active records objects or things which are more memory intense, you should add this method into a lambda / callable function
+ * > which is then lazy loaded only when creating the guide. For example:
+ * > ['myModel' => function() { return MyModel::findOne(1); } ]
+ *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
@@ -75,7 +79,7 @@ class Element extends \yii\base\Component
      * @var string The path to the folder where the view files to render can be found.
      */
     public $viewsFolder = '@app/views/elements/';
-    
+
     /**
      * @var array Contains all registered elements.
      */
@@ -138,7 +142,7 @@ class Element extends \yii\base\Component
     public function addElement($name, $closure, $mockedArgs = [])
     {
         $this->_elements[$name] = $closure;
-        
+
         $this->mockArgs($name, $mockedArgs);
     }
 
@@ -152,7 +156,7 @@ class Element extends \yii\base\Component
     {
         return array_key_exists($name, $this->_elements);
     }
-    
+
     /**
      * Returns an array with all registered Element-Names.
      *
@@ -172,7 +176,7 @@ class Element extends \yii\base\Component
     {
         return $this->_elements;
     }
-    
+
     /**
      * Renders the closure for the given name and returns the content.
      *
@@ -186,7 +190,7 @@ class Element extends \yii\base\Component
         if (!array_key_exists($name, $this->_elements)) {
             throw new Exception("The requested element '$name' does not exist in the list. You may register the element first with `addElement(name, closure)`.");
         }
-    
+
         return call_user_func_array($this->_elements[$name], $params);
     }
 
@@ -204,9 +208,9 @@ class Element extends \yii\base\Component
 
         return $this->_folder;
     }
-    
+
     private $_mockedArguments = [];
-    
+
     /**
      * Mock arguments for an element in order to render those inside the styleguide.
      *
@@ -217,7 +221,7 @@ class Element extends \yii\base\Component
     {
         $this->_mockedArguments[$elementName] = $args;
     }
-    
+
     /**
      * Find the mocked value for an element argument.
      *
@@ -228,9 +232,13 @@ class Element extends \yii\base\Component
     public function getMockedArgValue($elementName, $argName)
     {
         if (isset($this->_mockedArguments[$elementName]) && isset($this->_mockedArguments[$elementName][$argName])) {
-            return $this->_mockedArguments[$elementName][$argName];
+            $response = $this->_mockedArguments[$elementName][$argName];
+            if (is_callable($response)) {
+                $response = call_user_func($response);
+            }
+            return $response;
         }
-        
+
         return false;
     }
 
@@ -246,6 +254,7 @@ class Element extends \yii\base\Component
     public function render($file, array $args = [])
     {
         $view = new View();
+        $view->autoRegisterCsrf = false;
         return $view->renderPhpFile(rtrim($this->getFolder(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . FileHelper::ensureExtension($file, 'php'), $args);
     }
 }

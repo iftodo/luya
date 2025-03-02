@@ -2,18 +2,18 @@
 
 namespace luya\base;
 
-use Yii;
-use ReflectionClass;
-use luya\Exception;
-use luya\web\Application as WebApplication;
 use luya\console\Application as ConsoleApplication;
+use luya\Exception;
 use luya\helpers\ArrayHelper;
+use luya\web\Application as WebApplication;
+use ReflectionClass;
+use Yii;
 
 /**
  * LUYA Boot wrapper.
  *
- * Run the Luya/Yii Application based on the current enviroment which is determined trough get_sapi_name(). To run an application
- * a config file with custom Luya/Yii configuration must be provided via `$configFile` property. By default luya will try to find
+ * Run a LUYA Application based on the current enviroment which is determined trough get_sapi_name(). To run an application
+ * a config file with LUYA configuration must be provided via `$configFile` property. By default LUYA will try to find
  * the default config `../configs/env.php`.
  *
  * @author Basil Suter <basil@nadar.io>
@@ -22,10 +22,10 @@ use luya\helpers\ArrayHelper;
 abstract class Boot
 {
     /**
-     * @var string The current LUYA version (see: https://github.com/luyadev/luya/blob/master/CHANGELOG.md)
+     * @var string The current LUYA version (see: https://github.com/luyadev/luya/blob/master/core/CHANGELOG.md)
      */
-    const VERSION = '1.0.0-dev';
-    
+    public const VERSION = '2.3.2';
+
     /**
      * @var string The path to the config file, which returns an array containing you configuration.
      */
@@ -61,17 +61,47 @@ abstract class Boot
     {
         $this->_baseYiiFile = $baseYiiFile;
     }
-    
+
+    /**
+     * Getter method for Yii base file.
+     *
+     * @return string
+     */
     public function getBaseYiiFile()
     {
         return $this->_baseYiiFile;
     }
 
-    public function isCli()
+    private $_isCli;
+
+    /**
+     * Getter method whether current request is cli or not.
+     *
+     * If not set via setIsCli() the value is determined trough php_sapi_name();
+     *
+     * @return boolean Whether current request is console env or not.
+     * @since 1.0.12
+     */
+    public function getIsCli()
     {
-        return $this->getSapiName() === 'cli';
+        if ($this->_isCli === null) {
+            $this->_isCli = $this->getSapiName() === 'cli';
+        }
+
+        return $this->_isCli;
     }
-    
+
+    /**
+     * Setter method for isCli.
+     *
+     * @param boolean $isCli
+     * @since 1.0.12
+     */
+    public function setIsCli($isCli)
+    {
+        $this->_isCli = $isCli;
+    }
+
     /**
      * Returns the current sapi name in lower case.
      *
@@ -83,7 +113,7 @@ abstract class Boot
     }
 
     private $_configArray;
-    
+
     /**
      * This method allows you to directly inject a configuration array instead of using the config file
      * method.
@@ -103,7 +133,7 @@ abstract class Boot
     {
         $this->_configArray = $config;
     }
-    
+
     /**
      * The prependConfigArray will be merged into the config, this way you can prepand config values for a custom Boot class.
      *
@@ -116,7 +146,7 @@ abstract class Boot
     {
         return [];
     }
-    
+
     /**
      * Get the config array from the configFile path with the predefined values.
      *
@@ -127,29 +157,24 @@ abstract class Boot
     {
         if ($this->_configArray === null) {
             if (!file_exists($this->configFile)) {
-                if (!$this->isCli()) {
+                if (!$this->getIsCli()) {
                     throw new Exception("Unable to load the config file '".$this->configFile."'.");
                 }
-                
+
                 $config = ['id' => 'consoleapp', 'basePath' => dirname(__DIR__)];
             } else {
                 $config = require $this->configFile;
             }
-    
+
             if (!is_array($config)) {
                 throw new Exception("config file '".$this->configFile."' found but no array returning.");
             }
-    
-            // adding default configuration timezone if not set
-            if (!array_key_exists('timezone', $config)) {
-                $config['timezone'] = 'Europe/Berlin';
-            }
-            
+
             // preset the values from the defaultConfigArray
             if (!empty($this->prependConfigArray())) {
                 $config = ArrayHelper::merge($config, $this->prependConfigArray());
             }
-         
+
             $this->_configArray = $config;
         }
 
@@ -159,11 +184,11 @@ abstract class Boot
     /**
      * Run the application based on the Sapi Name.
      *
-     * @return \luya\web\Application|\luya\cli\Application Application objected based on the sapi name.
+     * @return \luya\web\Application|\luya\console\Application Application objected based on the sapi name.
      */
     public function run()
     {
-        if ($this->isCli()) {
+        if ($this->getIsCli()) {
             return $this->applicationConsole();
         }
 
@@ -172,11 +197,10 @@ abstract class Boot
 
     /**
      * Run Cli-Application based on the provided config file.
-     *
-     * @return string|integer
      */
     public function applicationConsole()
     {
+        $this->setIsCli(true);
         $config = $this->getConfigArray();
         $config['defaultRoute'] = 'help';
         if (isset($config['components'])) {
@@ -184,16 +208,17 @@ abstract class Boot
                 unset($config['components']['composition']);
             }
         }
-        
+
+        $this->includeYii();
+
         $baseUrl = null;
         if (isset($config['consoleBaseUrl'])) {
             $baseUrl = $config['consoleBaseUrl'];
         } elseif (isset($config['consoleHostInfo'])) {
             $baseUrl = '/';
         }
-        
-        $this->includeYii();
-        $this->app = new ConsoleApplication(ArrayHelper::merge([
+
+        $mergedConfig = ArrayHelper::merge($config, [
             'bootstrap' => ['luya\console\Bootstrap'],
             'components' => [
                 'urlManager' => [
@@ -201,10 +226,12 @@ abstract class Boot
                     'enablePrettyUrl' => true,
                     'showScriptName' => false,
                     'baseUrl' => $baseUrl,
-                    'hostInfo' => isset($config['consoleHostInfo']) ? $config['consoleHostInfo'] : null,
+                    'hostInfo' => $config['consoleHostInfo'] ?? null,
                 ],
             ],
-        ], $config));
+        ]);
+        $this->app = new ConsoleApplication($mergedConfig);
+
         if (!$this->mockOnly) {
             exit($this->app->run());
         }
@@ -212,19 +239,19 @@ abstract class Boot
 
     /**
      * Run Web-Application based on the provided config file.
-     *
-     * @return string Returns the Yii Application run() method if mock is disabled. Otherwise returns void
      */
     public function applicationWeb()
     {
         $config = $this->getConfigArray();
         $this->includeYii();
-        $this->app = new WebApplication(ArrayHelper::merge(['bootstrap' => ['luya\web\Bootstrap']], $config));
+        $mergedConfig = ArrayHelper::merge($config, ['bootstrap' => ['luya\web\Bootstrap']]);
+        $this->app = new WebApplication($mergedConfig);
+
         if (!$this->mockOnly) {
             return $this->app->run();
         }
     }
-    
+
     /**
      * Returns the path to luya core files
      *
@@ -235,7 +262,7 @@ abstract class Boot
         $reflector = new ReflectionClass(get_class($this));
         return dirname($reflector->getFileName());
     }
-    
+
     /**
      * Helper method to check whether the provided Yii Base file exists, if yes include and
      * return the file.
@@ -247,19 +274,19 @@ abstract class Boot
     {
         if (file_exists($this->_baseYiiFile)) {
             defined('LUYA_YII_VENDOR') ?: define('LUYA_YII_VENDOR', dirname($this->_baseYiiFile));
-            
+
             $baseYiiFolder = LUYA_YII_VENDOR . DIRECTORY_SEPARATOR;
             $luyaYiiFile = $this->getCoreBasePath() . DIRECTORY_SEPARATOR .  'Yii.php';
-            
+
             if (file_exists($luyaYiiFile)) {
                 require_once($baseYiiFolder . 'BaseYii.php');
                 require_once($luyaYiiFile);
             } else {
                 require_once($baseYiiFolder . 'Yii.php');
             }
-            
+
             Yii::setAlias('@luya', $this->getCoreBasePath());
-            
+
             return true;
         }
 

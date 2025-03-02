@@ -13,9 +13,9 @@ use luya\traits\ErrorHandlerTrait;
 class ErrorHandler extends \yii\console\ErrorHandler
 {
     use ErrorHandlerTrait;
-    
+
     /**
-     * @var streing This propertie has been added in order to make sure console commands config
+     * @var string This propertie has been added in order to make sure console commands config
      * does also work in console env.
      */
     public $errorAction;

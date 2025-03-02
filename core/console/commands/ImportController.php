@@ -2,11 +2,12 @@
 
 namespace luya\console\commands;
 
-use Yii;
-
 use luya\admin\models\Config;
+use luya\Boot;
 use luya\console\Command;
 use luya\console\interfaces\ImportControllerInterface;
+use Yii;
+use yii\console\widgets\Table;
 
 /**
  * Import controller runs the module defined importer classes.
@@ -19,16 +20,26 @@ use luya\console\interfaces\ImportControllerInterface;
  *
  * Each of the importer classes must extend the {{\luya\console\Importer}} class.
  *
+ * To override importer settings reconfigure the importer command:
+ *
+ * ```php
+ * 'controllerMap' => [
+ *     'import' => [
+ *         'class' => ImportController::class,
+ *         'scanFolders' => ['themes', 'blocks'],
+ *      ]
+ * ]
+ * ```
+ *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
 class ImportController extends Command implements ImportControllerInterface
 {
-    private $_dirs = [];
-
-    private $_log = [];
-
-    private $_scanFolders = ['blocks', 'filters', 'properties', 'blockgroups'];
+    /**
+     * @var array An array with all folder names inside an application/module to scan for files.
+     */
+    public $scanFolders = ['themes', 'blocks', 'filters', 'properties', 'blockgroups'];
 
     /**
      * @inheritdoc
@@ -36,26 +47,58 @@ class ImportController extends Command implements ImportControllerInterface
     public function init()
     {
         parent::init();
-        
+
         // foreach scanFolders of all modules
         foreach (Yii::$app->getApplicationModules() as $id => $module) {
-            foreach ($this->_scanFolders as $folderName) {
+            foreach ($this->scanFolders as $folderName) {
                 $this->addToDirectory($module->getBasePath().DIRECTORY_SEPARATOR.$folderName, $folderName, '\\'.$module->getNamespace().'\\'.$folderName, $module->id);
             }
         }
         // foreach scanFolder inside the app namespace
-        foreach ($this->_scanFolders as $folderName) {
-            $this->addToDirectory(Yii::getAlias("@app/$folderName"), $folderName, '\\app\\'.$folderName, '@app');
+        foreach ($this->scanFolders as $folderName) {
+            $this->addToDirectory(Yii::getAlias("@app/$folderName"), $folderName, '\\app\\'.$folderName, 'app');
         }
     }
 
-    private function scanDirectoryFiles($path, $ns, $module)
+    private $_dirs = [];
+
+    /**
+     * Add a given directory to the list of folders.
+     *
+     * @param string $path The path on which the data is located `/app/myfolder`
+     * @param string $folderName The name of the folder `myfolder`
+     * @param string $ns The namespace which is used inside ths folder `\\app\\myfolder`
+     * @param string $module The name/id of the module. The module which will be pased to the invoken importer method for example `admin`.
+     */
+    public function addToDirectory($path, $folderName, $ns, $module)
+    {
+        if (file_exists($path)) {
+            $this->_dirs[$folderName][] = [
+                'ns' => $ns,
+                'module' => $module,
+                'folderPath' => rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR,
+                'files' => $this->scanDirectoryFiles($path, $ns, $module),
+            ];
+        }
+    }
+
+    /**
+     * Scan a given directory path and return an array with namespace, module and file.
+     *
+     * @param string $path
+     * @param string $ns
+     * @param string $module The name/id of the module.
+     * @return array
+     */
+    protected function scanDirectoryFiles($path, $ns, $module)
     {
         $files = [];
         foreach (scandir($path) as $file) {
             if (substr($file, 0, 1) !== '.') {
                 $files[] = [
+                    'isFile' => is_file($path.DIRECTORY_SEPARATOR.$file),
                     'file' => $file,
+                    'filePath' => $path.DIRECTORY_SEPARATOR.$file,
                     'module' => $module,
                     'ns' => $ns.'\\'.pathinfo($file, PATHINFO_FILENAME),
                 ];
@@ -65,18 +108,6 @@ class ImportController extends Command implements ImportControllerInterface
         return $files;
     }
 
-    private function addToDirectory($path, $folderName, $ns, $module)
-    {
-        if (file_exists($path)) {
-            $this->_dirs[$folderName][] = [
-                'ns' => $ns,
-                'module' => $module,
-                'folderPath' => $path.DIRECTORY_SEPARATOR,
-                'files' => $this->scanDirectoryFiles($path, $ns, $module),
-            ];
-        }
-    }
-    
     /**
      * @inheritdoc
      */
@@ -86,13 +117,17 @@ class ImportController extends Command implements ImportControllerInterface
         if (array_key_exists($folderName, $this->_dirs)) {
             foreach ($this->_dirs[$folderName] as $folder) {
                 foreach ($folder['files'] as $file) {
-                    $files[] = $file;
+                    if ($file['isFile']) {
+                        $files[] = $file;
+                    }
                 }
             }
         }
-        
+
         return $files;
     }
+
+    private $_log = [];
 
     /**
      * @inheritdoc
@@ -101,7 +136,7 @@ class ImportController extends Command implements ImportControllerInterface
     {
         $this->_log[$section][] = $value;
     }
-    
+
     /**
      * Get all log data.
      *
@@ -122,11 +157,10 @@ class ImportController extends Command implements ImportControllerInterface
         $queue = [];
         foreach (Yii::$app->getApplicationModules() as $id => $module) {
             $response = $module->import($this);
-            
             // if there response is an array, the it will be added to the queue
             if (is_array($response)) {
                 foreach ($response as $class) {
-                    $object = new $class($this);
+                    $object = Yii::createObject($class, [$this, $module]);
                     $position = $object->queueListPosition;
                     while (true) {
                         if (!array_key_exists($position, $queue)) {
@@ -138,11 +172,11 @@ class ImportController extends Command implements ImportControllerInterface
                 }
             }
         }
-        
+
         ksort($queue);
         return $queue;
     }
-    
+
     /**
      * Run the import process.
      *
@@ -154,32 +188,48 @@ class ImportController extends Command implements ImportControllerInterface
 
         foreach ($queue as $pos => $object) {
             $this->verbosePrint("Run importer object '{$object->className()}' on position '{$pos}'.", __METHOD__);
+            $this->verbosePrint('Module context id: ' . $object->module->id);
             $object->run();
         }
 
         if (Yii::$app->hasModule('admin')) {
-            Config::set(Config::CONFIG_LAST_IMPORT_TIMESTAMP, time());
-            Config::set(Config::CONFIG_INSTALLER_VENDOR_TIMESTAMP, Yii::$app->packageInstaller->timestamp);
+            Config::set(Config::CONFIG_LAST_IMPORT_TIMESTAMP, time()); /** @phpstan-ignore-line */
+            Config::set(Config::CONFIG_INSTALLER_VENDOR_TIMESTAMP, Yii::$app->packageInstaller->timestamp); /** @phpstan-ignore-line */
             Yii::$app->db->createCommand()->update('admin_user', ['force_reload' => 1])->execute();
         }
-        
+
+        $this->output('LUYA import command (based on LUYA ' . Boot::VERSION . ')');
+
         foreach ($this->getLog() as $section => $value) {
             $this->outputInfo(PHP_EOL . $section . ":");
-            foreach ($value as $k => $v) {
-                if (is_array($v)) {
-                    foreach ($v as $kk => $kv) {
-                        if (is_array($kv)) {
-                            $this->output(" - {$kk}: " . print_r($kv, true));
-                        } else {
-                            $this->output(" - {$kk}: {$kv}");
-                        }
-                    }
-                } else {
-                    $this->output(" - " . $v);
+            $this->logValueToTable($value);
+        }
+
+        return $this->outputSuccess("Importer run successful.");
+    }
+
+    /**
+     * Print the log values as a table.
+     *
+     * @param array $logs
+     * @since 1.0.8
+     */
+    private function logValueToTable(array $logs)
+    {
+        $table = new Table();
+        $table->setHeaders(['Key', 'Value']);
+        $rows = [];
+
+        foreach ($logs as $key => $value) {
+            if (is_array($value)) {
+                foreach ($value as $kk => $kv) {
+                    $rows[] = [$kk, $kv];
                 }
+            } else {
+                $rows[] = [$key, $value];
             }
         }
-        
-        return $this->outputSuccess("Importer run successfull.");
+        $table->setRows($rows);
+        echo $table->run();
     }
 }

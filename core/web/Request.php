@@ -2,6 +2,7 @@
 
 namespace luya\web;
 
+use luya\helpers\StringHelper;
 use Yii;
 
 /**
@@ -29,16 +30,16 @@ class Request extends \yii\web\Request
      * http://randomkeygen.com using a 504-bit WPA Key
      */
     public $cookieValidationKey = '(`1gq(|TI2Zxx7zZH<Zk052a9a$@l2EtD9wT`lkTO@7uy{cPaJt4y70mxh4q(3';
-    
+
     /**
      * @var array A list of default available parsers.
      */
     public $parsers = [
         'application/json' => 'yii\web\JsonParser',
     ];
-    
+
     private $_isAdmin;
-    
+
     /**
      * Setter method to force isAdmin request.
      *
@@ -59,25 +60,34 @@ class Request extends \yii\web\Request
     public function getIsAdmin()
     {
         if ($this->_isAdmin === null) {
-            if ($this->getIsConsoleRequest() && !$this->forceWebRequest) {
+            if ($this->getIsConsoleRequest() && !$this->forceWebRequest && !Yii::$app->hasModule('admin')) {
                 $this->_isAdmin = false;
             } else {
-                $resolver = Yii::$app->composition->getResolvedPathInfo($this);
-                $pathInfo = $resolver['route'];
-                $parts = explode('/', $pathInfo);
-                $first = reset($parts);
-                
-                if (preg_match('/admin/i', $first, $results)) {
+                // if there is only an application with admin module and set as default route
+                // this might by the admin module even when pathInfo is empty
+                if (Yii::$app->defaultRoute == 'admin' && empty($this->pathInfo)) {
                     $this->_isAdmin = true;
                 } else {
-                    $this->_isAdmin = false;
+                    $resolver = Yii::$app->composition->getResolvedPathInfo($this);
+                    $parts = explode('/', $resolver->resolvedPath);
+                    $first = reset($parts);
+
+                    // Check for a full route path where the module ends with admin like `newsadmin` and this module is loaded in the list of modules.
+                    // @see https://github.com/luyadev/luya/pull/2027
+                    if (count($parts) > 0 && StringHelper::endsWith($first, 'admin') && Yii::$app->hasModule($first)) {
+                        $this->_isAdmin = true;
+                    } elseif (strtolower(trim($first)) == 'admin') {
+                        $this->_isAdmin = true;
+                    } else {
+                        $this->_isAdmin = false;
+                    }
                 }
             }
         }
-        
+
         return $this->_isAdmin;
     }
-    
+
     /**
      * Get the user client language.
      *
@@ -86,6 +96,6 @@ class Request extends \yii\web\Request
      */
     public function getClientLanguage($defaultValue)
     {
-        return (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) ? substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2) : $defaultValue;
+        return isset($_SERVER['HTTP_ACCEPT_LANGUAGE']) ? substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2) : $defaultValue;
     }
 }

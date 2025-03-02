@@ -2,7 +2,10 @@
 
 namespace luya\console;
 
+use luya\helpers\ObjectHelper;
 use Yii;
+use yii\base\InvalidCallException;
+use yii\console\Controller as BaseController;
 use yii\helpers\Console;
 
 /**
@@ -14,8 +17,18 @@ use yii\helpers\Console;
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
-abstract class Controller extends \yii\console\Controller
+abstract class Controller extends BaseController
 {
+    public function init()
+    {
+        parent::init();
+
+        // Ensure the console command is running under web application object.
+        if (!ObjectHelper::isInstanceOf(Yii::$app, 'yii\console\Application', false)) {
+            throw new InvalidCallException("The console controller can only run within a console Application context.");
+        }
+    }
+
     /**
      * Helper method to see if the current Application is muted or not. If the Application is muted, no output
      * will displayed.
@@ -25,6 +38,21 @@ abstract class Controller extends \yii\console\Controller
     public function isMuted()
     {
         return Yii::$app->mute;
+    }
+
+    /**
+     * Generates a printable string from a message.
+     *
+     * If a message is not a string, it will return var export to generate
+     * a returnable string from a message.
+     *
+     * @param mixed $message
+     * @return string
+     * @since 1.0.22
+     */
+    public function printableMessage($message)
+    {
+        return is_scalar($message) ? $message : var_export($message, true);
     }
 
     /**
@@ -40,7 +68,7 @@ abstract class Controller extends \yii\console\Controller
             if ($color !== null) {
                 $format[] = $color;
             }
-            echo Console::ansiFormat("\r".$message."\n", $format);
+            echo Console::ansiFormat("\r".$this->printableMessage($message)."\n", $format);
         }
     }
 
@@ -69,7 +97,7 @@ abstract class Controller extends \yii\console\Controller
 
         return 0;
     }
-    
+
     /**
      * Helper method to stop the console command with a info message which is threated in case of returns as success
      * but does have a different output color (blue). outputInfo returns exit code 0.
@@ -80,7 +108,7 @@ abstract class Controller extends \yii\console\Controller
     public function outputInfo($message)
     {
         $this->output($message, Console::FG_CYAN);
-        
+
         return 0;
     }
 }

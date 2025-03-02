@@ -13,7 +13,7 @@ interface ImportControllerInterface
     /**
      * Get all files from a directory.
      *
-     * The direcotry must be in _scanFolders map of the {{luya\console\commands\ImporterController}}. An array will be returnd with the keys:
+     * The directory must be in _scanFolders map of the {{luya\console\commands\ImporterController}}. An array will be returned with the keys:
      *
      * + file: The name of the file inside the provided folder (e.g. MyBlock.php)
      * + module: The name of the module where the file belongs to.
@@ -27,7 +27,7 @@ interface ImportControllerInterface
      *
      * If there are no files found getDirectoryFiles will return an empty array.
      *
-     * @param stirng $folderName The folder name to find all files from.
+     * @param string $folderName The folder name to find all files from.
      * @return array If no files found for the given folder an empty array will be returned, otherwise a list of all files inside the given folder.
      */
     public function getDirectoryFiles($folderName);

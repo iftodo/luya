@@ -12,9 +12,9 @@ class ControllerTest extends \luyatests\LuyaWebTestCase
 {
     public $controller;
 
-    public function setUp()
+    public function afterSetup()
     {
-        parent::setUp();
+        parent::afterSetup();
         $this->controller = new StubController('stub', Yii::$app->getModule('viewmodule'));
     }
 
@@ -28,5 +28,12 @@ class ControllerTest extends \luyatests\LuyaWebTestCase
     {
         $view2 = $this->controller->renderLayout('view2');
         $this->assertEquals('view2', $view2);
+    }
+
+    public function testViewLayoutRenderWithAliasPath()
+    {
+        $view3 = $this->controller->renderLayout('@viewmodule/views/stub/view2');
+
+        $this->assertSame('view2', $view3);
     }
 }

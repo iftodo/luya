@@ -2,7 +2,9 @@
 
 namespace luya\console;
 
+use luya\base\Module;
 use luya\console\interfaces\ImportControllerInterface;
+use yii\base\BaseObject;
 
 /**
  * Base class for all Importer classes.
@@ -23,18 +25,19 @@ use luya\console\interfaces\ImportControllerInterface;
  * }
  * ```
  *
- * @property \luya\console\interfaces\ImportControllerInterface $importer Importer Object
+ * @property \luya\console\interfaces\ImportControllerInterface $importer Importer object.
+ * @property \luya\base\Module $module The module context object.
  *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
-abstract class Importer extends \yii\base\Object
+abstract class Importer extends BaseObject
 {
-    const QUEUE_POSITION_FIRST = 0;
+    public const QUEUE_POSITION_FIRST = 0;
 
-    const QUEUE_POSITION_MIDDLE = 50;
+    public const QUEUE_POSITION_MIDDLE = 50;
 
-    const QUEUE_POSITION_LAST = 100;
+    public const QUEUE_POSITION_LAST = 100;
 
     /**
      * @var int The priority between 0 and 100 where to Import command should be queued.
@@ -44,18 +47,25 @@ abstract class Importer extends \yii\base\Object
     public $queueListPosition = self::QUEUE_POSITION_MIDDLE;
 
     /**
-     * @var mixed|array Read only property contains the importer object.
+     * @var \luya\console\interfaces\ImportControllerInterface Read only property contains the importer object.
      */
     private $_importer;
+
+    /**
+     * @var \luya\base\Module Read only module object property.
+     */
+    private $_module;
 
     /**
      * Class constructor containing the importer object from where its called.
      *
      * @param \luya\console\interfaces\ImportControllerInterface $importer Import Object `\luya\commands\ImportController`.
      */
-    public function __construct(ImportControllerInterface $importer, $config = [])
+    public function __construct(ImportControllerInterface $importer, Module $module, $config = [])
     {
         $this->_importer = $importer;
+        $this->_module = $module;
+
         parent::__construct($config);
     }
 
@@ -70,6 +80,17 @@ abstract class Importer extends \yii\base\Object
     }
 
     /**
+     * Returns the module object where the command has been found.
+     *
+     * @return \luya\base\Module
+     * @since 1.0.8
+     */
+    public function getModule()
+    {
+        return $this->_module;
+    }
+
+    /**
      * Add something to the output. Wrapper method from importer.
      *
      * ```php
@@ -80,7 +101,7 @@ abstract class Importer extends \yii\base\Object
      */
     public function addLog($value)
     {
-        $this->getImporter()->addLog(get_called_class(), $value);
+        $this->getImporter()->addLog(static::class, $value);
     }
 
     /**

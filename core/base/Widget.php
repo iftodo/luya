@@ -21,11 +21,11 @@ class Widget extends \yii\base\Widget
      * @var boolean Whether to find view files inside the `@app/views` folder or the original widget implementation.
      */
     public $useAppViewPath = false;
-    
+
     /**
      * Find view paths in application folder.
      *
-     * {@inheritDoc}
+     * @inheritDoc
      *
      * @see \yii\base\Widget::getViewPath()
      * @return string
@@ -35,7 +35,7 @@ class Widget extends \yii\base\Widget
         if (!$this->useAppViewPath) {
             return parent::getViewPath();
         }
-        
+
         // get reflection
         $class = new ReflectionClass($this);
         // get path with alias

@@ -2,9 +2,11 @@
 
 namespace luya\web\filters;
 
+use luya\exceptions\WhitelistedException;
+use luya\helpers\ArrayHelper;
 use Yii;
 use yii\base\ActionFilter;
-use yii\base\InvalidCallException;
+use yii\base\Controller;
 use yii\helpers\VarDumper;
 
 /**
@@ -38,6 +40,8 @@ use yii\helpers\VarDumper;
  * }
  * ```
  *
+ * Its also recommend to use {{luya\widgets\SubmitButtonWidget}} when creating forms.
+ *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
@@ -47,17 +51,29 @@ class RobotsFilter extends ActionFilter
      * @var float The number of seconds a human would have to fill up the form, before the form is triggered as invalid.
      */
     public $delay = 2.5;
-    
-    const ROBOTS_FILTER_SESSION_IDENTIFIER = '__robotsFilterRenderTime';
-    
+
+    /**
+     * @var string|null A string which identifiers the current robots filter in case you have multiple controllers on the same page with robot filters enabled.
+     * @since 1.0.17
+     */
+    public $sessionKey;
+
+    public const ROBOTS_FILTER_SESSION_IDENTIFIER = '__robotsFilterRenderTime';
+
     /**
      * @return integer Returns the latest render timestamp.
      */
     protected function getRenderTime()
     {
-        return Yii::$app->session->get(self::ROBOTS_FILTER_SESSION_IDENTIFIER, time());
+        $value = Yii::$app->session->get(self::ROBOTS_FILTER_SESSION_IDENTIFIER, [$this->getSessionKeyByOwner() => time()]);
+
+        if (isset($value[$this->getSessionKeyByOwner()])) {
+            return $value[$this->getSessionKeyByOwner()];
+        }
+
+        return time();
     }
-    
+
     /**
      * Render Time Setter.
      *
@@ -65,9 +81,31 @@ class RobotsFilter extends ActionFilter
      */
     protected function setRenderTime($time)
     {
-        Yii::$app->session->set(self::ROBOTS_FILTER_SESSION_IDENTIFIER, $time);
+        $merge = Yii::$app->session->get(self::ROBOTS_FILTER_SESSION_IDENTIFIER, []);
+        Yii::$app->session->set(self::ROBOTS_FILTER_SESSION_IDENTIFIER, array_merge([$this->getSessionKeyByOwner() => $time], $merge));
     }
-    
+
+    /**
+     * Get a specific key for the current robots filter session array.
+     *
+     * This ensures that when multiple forms are on the same page, only the robot check is handeld for the given module name.
+     *
+     * @return string
+     * @since 1.0.17
+     */
+    protected function getSessionKeyByOwner()
+    {
+        if ($this->sessionKey) {
+            return $this->sessionKey;
+        }
+
+        if ($this->owner instanceof Controller) {
+            return $this->owner->module->id;
+        }
+
+        return 'generic';
+    }
+
     /**
      * Return the elapsed process time to fill in the form.
      *
@@ -77,7 +115,7 @@ class RobotsFilter extends ActionFilter
     {
         return (int) (time() - $this->getRenderTime());
     }
-    
+
     /**
      * @inheritdoc
      */
@@ -85,20 +123,20 @@ class RobotsFilter extends ActionFilter
     {
         if (Yii::$app->request->isPost) {
             if ($this->getElapsedProcessTime() < $this->delay) {
-                throw new InvalidCallException("Robots Filter has detected an invalid Request: " . VarDumper::export(Yii::$app->request->post()));
+                throw new WhitelistedException("Robots Filter has detected an invalid Request: " . VarDumper::export(ArrayHelper::coverSensitiveValues(Yii::$app->request->post())));
             }
         }
-        
+
         return true;
     }
-    
+
     /**
      * @inheritdoc
      */
     public function afterAction($action, $result)
     {
         $this->setRenderTime(time());
-        
+
         return $result;
     }
 }

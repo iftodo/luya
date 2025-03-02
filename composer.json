@@ -1,53 +1,82 @@
 {
-    "minimum-stability" : "RC",
-    "name" : "luyadev/luya",
-    "description" : "LUYA is a fast and flexible PHP framework and content management system built with the goal to please developers, clients and users alike. Built upon Yii 2.",
-    "type" : "project",
-    "keywords" : ["php", "yii2", "cms", "luya", "programmatic", "content", "angular", "modular", "yii2-wrapper"],
-    "license": "MIT",
-    "homepage" : "https://luya.io",
-    "authors" : [
-        {
-            "name" : "Basil Suter",
-            "email" : "git@nadar.io",
-            "homepage" : "https://github.com/nadar"
-        }
-    ],
-    "support" : {
-        "issues" : "https://github.com/luyadev/luya/issues"
+  "name": "luyadev/luya",
+  "description": "LUYA is a scalable web framework and content management system with the goal to please developers, clients and users alike.",
+  "type": "project",
+  "keywords": [
+    "php",
+    "yii2",
+    "cms",
+    "luya",
+    "website",
+    "content",
+    "angular",
+    "modules",
+    "framework"
+  ],
+  "license": "MIT",
+  "homepage": "https://luya.io",
+  "authors": [
+    {
+      "name": "Basil Suter",
+      "email": "git@nadar.io",
+      "homepage": "https://github.com/nadar"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/luyadev/luya/issues"
+  },
+  "require": {
+    "luyadev/luya-composer": "^1.0",
+    "luyadev/yii-helpers": "^1.0",
+    "yiisoft/yii2": "~2.0.15",
+    "curl/curl": "^2.0 || ^1.0",
+    "phpmailer/phpmailer": "^6.0",
+    "nadar/php-composer-reader": "^1.0",
+    "cpliakas/git-wrapper": "^1.0 || ^2.0",
+    "giggsey/libphonenumber-for-php": "^8.11"
+  },
+  "require-dev": {
+    "luyadev/luya-testsuite": "^3.1.4",
+    "nadar/github-markdown-fixer": "^1.0",
+    "unglue/client": "^1.5",
+    "friendsofphp/php-cs-fixer": "^3.2",
+    "phpstan/phpstan": "^1.7",
+    "rector/rector": "^0.14.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "luya\\": "core/",
+      "luya\\dev\\": "dev",
+      "luyatests\\": "tests/"
+    }
+  },
+  "extra": {
+    "asset-installer-paths": {
+      "bower-asset-library": "vendor/bower"
+    }
+  },
+  "config": {
+    "fxp-asset": {
+      "enabled": false
     },
-    "require" : {
-    	"luyadev/luya-composer" : "~1.0.0",
-        "yiisoft/yii2": "~2.0.0",
-        "curl/curl" : "~1.0",
-        "phpmailer/phpmailer": "~5.0"
-    },
-    "require-dev" : {
-        "luyadev/luya-testsuite" : "^1.0@dev",
-        "php-coveralls/php-coveralls": "^1.0"
-    },
-    "autoload" : {
-        "psr-4" : {
-            "luya\\" : "core/",
-            "luyatests\\" : "tests/"
-        }
-    },
-    "extra": {
-        "asset-installer-paths": {
-            "bower-asset-library": "vendor/bower"
-        },
-        "branch-alias": {
-            "dev-master": "1.0.x-dev"
-        }
-    },
-    "bin" : ["core/bin/luya"],
-    "config": {
-        "platform": {"php": "7.0"}
-    },
-    "repositories": [
-        {
-            "type": "composer",
-            "url": "https://asset-packagist.org"
-        }
-    ]
+    "allow-plugins": {
+      "yiisoft/yii2-composer": true,
+      "luyadev/luya-composer": true
+    }
+  },
+  "bin": [
+    "core/bin/luya",
+    "dev/luyadev"
+  ],
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://asset-packagist.org"
+    }
+  ],
+  "scripts": {
+    "phpstan": "vendor/bin/phpstan -v",
+    "phpcsfixer": "vendor/bin/php-cs-fixer fix",
+    "rector": "vendor/bin/rector"
+  }
 }

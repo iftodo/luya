@@ -2,28 +2,45 @@
 
 namespace luyatests\core\web;
 
-use Yii;
+use luya\admin\Module;
 use luya\web\Request;
+use Yii;
 
 class RequestTest extends \luyatests\LuyaWebTestCase
 {
     public function testisAdmin()
     {
+        $this->app->setModule('newsadmin', ['class' => Module::class]);
         $request = new Request();
         $request->forceWebRequest = true;
         $request->pathInfo = 'admin/test/';
-        $this->assertEquals(true, $request->isAdmin);
-        
+        $this->assertEquals(true, $request->getIsAdmin(true));
+
+        $request = new Request();
+        $request->forceWebRequest = true;
+        $request->pathInfo = 'admin/';
+        $this->assertEquals(true, $request->getIsAdmin(true));
+
+        $request = new Request();
+        $request->forceWebRequest = true;
+        $request->pathInfo = 'admin';
+        $this->assertEquals(true, $request->getIsAdmin(true));
+
         $request = new Request();
         $request->forceWebRequest = true;
         $request->pathInfo = 'nothing/inside/test/';
         $this->assertEquals(false, $request->isAdmin);
-        
+
+        $request = new Request();
+        $request->forceWebRequest = true;
+        $request->pathInfo = 'administrator';
+        $this->assertEquals(false, $request->isAdmin);
+
         $request = new Request();
         $request->forceWebRequest = true;
         $request->pathInfo = 'nothing/admin/test/';
         $this->assertEquals(false, $request->isAdmin);
-        
+
         $request = new Request();
         $request->forceWebRequest = true;
         $request->pathInfo = 'newsadmin/foo/test/';

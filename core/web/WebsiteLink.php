@@ -2,12 +2,9 @@
 
 namespace luya\web;
 
-use yii\base\Object;
+use luya\helpers\StringHelper;
 use luya\helpers\Url;
 use yii\base\InvalidConfigException;
-use yii\base\ArrayableTrait;
-use yii\base\Arrayable;
-use luya\helpers\StringHelper;
 
 /**
  * Generate External Link object.
@@ -21,37 +18,27 @@ use luya\helpers\StringHelper;
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
  */
-class WebsiteLink extends Object implements LinkInterface, Arrayable
+class WebsiteLink extends BaseLink
 {
-    use LinkTrait, ArrayableTrait;
-    
     /**
      * @var string The default value which is used for website links is `_blank` you can override this property in order to change the default value.
      */
     public $defaultTarget = '_blank';
-    
+
     /**
      * @inheritdoc
      */
     public function init()
     {
         parent::init();
-        
+
         if ($this->href === null) {
             throw new InvalidConfigException('The href attribute can not be empty and must be set trough configuration array.');
         }
     }
-    
-    /**
-     * @inheritdoc
-     */
-    public function fields()
-    {
-        return ['href', 'target'];
-    }
-    
+
     private $_href;
-    
+
     /**
      * Set the href value for an external link resource.
      *
@@ -61,11 +48,14 @@ class WebsiteLink extends Object implements LinkInterface, Arrayable
     {
         if (StringHelper::startsWith($href, '//')) {
             $this->_href = Url::base(true) . str_replace('//', '/', $href);
+        } elseif (StringHelper::startsWith($href, '#')) {
+            // When an anchor link is given, do not modify the link. This can be usefull for one pagers
+            $this->_href = $href;
         } else {
             $this->_href = Url::ensureHttp($href);
         }
     }
-    
+
     /**
      * @inheritdoc
      */
@@ -73,9 +63,9 @@ class WebsiteLink extends Object implements LinkInterface, Arrayable
     {
         return $this->_href;
     }
-    
+
     private $_target;
-    
+
     /**
      * Setter method for the link target.
      *
@@ -85,7 +75,7 @@ class WebsiteLink extends Object implements LinkInterface, Arrayable
     {
         $this->_target = $target;
     }
-    
+
     /**
      * @inheritdoc
      */

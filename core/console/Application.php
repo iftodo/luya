@@ -5,7 +5,9 @@ namespace luya\console;
 use luya\traits\ApplicationTrait;
 
 /**
- * Console/CLI Application.
+ * LUYA Console/CLI Application.
+ *
+ * @property \luya\console\ErrorHandler $errorHandler The error handler component.
  *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
@@ -37,15 +39,19 @@ class Application extends \yii\console\Application
             'fixture' => 'yii\console\controllers\FixtureController',
             'help' => 'yii\console\controllers\HelpController',
             'message' => 'yii\console\controllers\MessageController',
-            'serve' => 'yii\console\controllers\ServeController',
+            'serve' => [
+                'class' => 'yii\console\controllers\ServeController',
+                'docroot' => '@app/public_html',
+            ],
             // luya default commands
             'migrate' => 'luya\console\commands\MigrateController',
             'module' => 'luya\console\commands\ModuleController',
+            'theme' => 'luya\console\commands\ThemeController',
             'import' => 'luya\console\commands\ImportController',
             'health' => 'luya\console\commands\HealthController',
         ];
     }
-    
+
     /**
      * @inheritdoc
      */

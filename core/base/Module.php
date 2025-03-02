@@ -2,12 +2,10 @@
 
 namespace luya\base;
 
-use yii;
-
-use luya\helpers\FileHelper;
-use yii\helpers\Inflector;
 use luya\console\interfaces\ImportControllerInterface;
-use yii\base\InvalidParamException;
+use luya\helpers\ObjectHelper;
+use Yii;
+use yii\base\Application;
 use yii\base\InvalidConfigException;
 
 /**
@@ -16,6 +14,21 @@ use yii\base\InvalidConfigException;
  * The module class provides url rule defintions and other helper methods.
  *
  * In order to use a module within the CMS context it must extend from this base module class.
+ *
+ * @property array $urlRules Contains all urlRules for this module. You can either provide a full {{luya\web\UrlRule}} object configuration as array like this:
+ * ```php
+ * 'urlRules' => [
+ *     ['pattern' => 'mymodule/detail/<id:\d+>', 'route' => 'mymodule/detail/user'],
+ * ],
+ * ```
+ *
+ * Or you can provide a key value pairing where key is the pattern and the value is the route:
+ *
+ * ```php
+ * 'urlRules' => [
+ *     'mymodule/detail/<id:\d+>' => 'mymodule/detail/user',
+ * ],
+ * ```
  *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
@@ -36,6 +49,23 @@ abstract class Module extends \yii\base\Module
     public $apis = [];
 
     /**
+     * @var array An array with additional rules for a given api name. This allows you to extend and customize the {{yii\rest\UrlRule}} for
+     * a given API. Example:
+     *
+     * ```php
+     * 'apiRules' => [
+     *     'api-admin-user' => ['extraPattern' => ['GET {id}/login-list' => 'logins']],
+     *     'api-admin-group' => ['exception' => ['this-action']],
+     * ],
+     * ```
+     *
+     * You can define all properties from {{yii\rest\UrlRule}}.
+     *
+     * @since 1.0.10
+     */
+    public $apiRules = [];
+
+    /**
      * @var array An array with Tag class names to inject into the tag parser on luya boot, where key is the identifier and value the create object conifg:
      *
      * ```php
@@ -48,9 +78,11 @@ abstract class Module extends \yii\base\Module
      * As by default the yii2 configurable object you can also pass properties to your tag object in order to configure them.
      */
     public $tags = [];
-    
+
+    private $_urlRules = [];
+
     /**
-     * @var array Contains all urlRules for this module. You can either provide a full {{luya\web\UrlRule}}
+     * UrlRules for this module. You can either provide a full {{luya\web\UrlRule}}
      * object configuration as array like this:
      *
      * ```php
@@ -66,8 +98,28 @@ abstract class Module extends \yii\base\Module
      *     'mymodule/detail/<id:\d+>' => 'mymodule/detail/user',
      * ],
      * ```
+     *
+     * @var array $rules Contains all urlRules for this module. You can either provide a full {{luya\web\UrlRule}}
+     * object configuration as array
+     * @since 1.0.1
      */
-    public $urlRules = [];
+    public function setUrlRules(array $rules)
+    {
+        $this->_urlRules = $rules;
+    }
+
+    /**
+     * Getter method for urlRules.
+     *
+     * > Never use the getter method, use the $urlRules virtual property as it provides backwards compatibility.
+     *
+     * @return array
+     * @since 1.0.1
+     */
+    public function getUrlRules()
+    {
+        return $this->_urlRules;
+    }
 
     /**
      * @var array An array containing all components which should be registered for the current module. If
@@ -84,7 +136,7 @@ abstract class Module extends \yii\base\Module
      * This variable is only available if your not in a context call. A context call would be if the cms renders the module.
      */
     public $useAppLayoutPath = true;
-    
+
     /**
      * @var bool Define the location of the view files inside the controller actions
      *
@@ -93,7 +145,29 @@ abstract class Module extends \yii\base\Module
      *
      */
     public $useAppViewPath = false;
-    
+
+    /**
+     * @var array mapping from action ID to view configurations.
+     * Each name-value pair specifies the configuration of a specifed oder wildcard action to a single view folder.
+     * The first match.
+     *
+     * For example:
+     *
+     * ```php
+     * [
+     *   'default/index' => '@app/views/mymodule/default',
+     *   'login/info' => '@app/views/mymodule/login',
+     *   'default/*' => '@app/views/mymodule/default',
+     *   '*' => '@app/views/mymodule',
+     * ]
+     * ```
+     *
+     * > Keep in mind, the viewMap only works when `useAppViewPath` is `false`.
+     *
+     * @since 1.0.11
+     */
+    public $viewMap = [];
+
     /**
      * @var string if this/the module is included via another module (parent module), the parent module will write its
      * name inside the child modules $context variable. For example the cms includes the news module, the context variable
@@ -118,21 +192,39 @@ abstract class Module extends \yii\base\Module
                 throw new InvalidConfigException(sprintf('The required component "%s" is not registered in the configuration file', $component));
             }
         }
-        
+
         static::onLoad();
     }
 
     /**
-     * Override the default implementation of Yii's getLayoutPath(). If the property `$useAppLayoutPath` is true,.
+     * The LUYA Bootstrap method will be invoken when the application starts.
      *
-     * the *@app* namespace views will be looked up for view files
+     * As LUYA modules will be loaded while bootstraping, this method will ALWAYS be invoken when
+     * the application starts.
+     *
+     * Compared to the {{yii\base\BootstrapInterface}} the module or class must still be configured
+     * to bootstrap in the configuration section, the {{luyaBootstrap}} will be invoken always.
+     *
+     * @param Application $app
+     * @since 1.0.21
+     */
+    public function luyaBootstrap(Application $app)
+    {
+    }
+
+    /**
+     * Override the default implementation of Yii's getLayoutPath(). If the property `$useAppLayoutPath` is true,
+     * the *@app* namespace views will be looked up for view files.
+     * Else the layout path of the active theme will be used.
      *
      * @return string
      * @see \yii\base\Module::getLayoutPath()
      */
     public function getLayoutPath()
     {
-        if ($this->useAppLayoutPath) {
+        if (Yii::$app->themeManager->hasActiveTheme && $this->useAppLayoutPath) {
+            $this->setLayoutPath(Yii::$app->themeManager->activeTheme->layoutPath);
+        } elseif ($this->useAppLayoutPath) {
             $this->setLayoutPath('@app/views/'.$this->id.'/layouts');
         }
 
@@ -204,7 +296,7 @@ abstract class Module extends \yii\base\Module
     {
         return false;
     }
-    
+
     /**
      * returns "luya\base" for example.
      *
@@ -214,7 +306,7 @@ abstract class Module extends \yii\base\Module
     {
         return implode('\\', array_slice(explode('\\', get_class($this)), 0, -1));
     }
-    
+
     /**
      * Returns all controller files of this module from the `getControllerPath()` folder, where the key is the reusable
      * id of this controller and value the file on the server.
@@ -223,18 +315,9 @@ abstract class Module extends \yii\base\Module
      */
     public function getControllerFiles()
     {
-        try { // https://github.com/yiisoft/yii2/blob/master/framework/base/Module.php#L235
-            $files = [];
-            foreach (FileHelper::findFiles($this->controllerPath) as $file) {
-                $value = ltrim(str_replace([$this->controllerPath, 'Controller.php'], '', $file), DIRECTORY_SEPARATOR);
-                $files[Inflector::camel2id($value)] = $file;
-            }
-            return $files;
-        } catch (InvalidParamException $e) {
-            return [];
-        };
+        return ObjectHelper::getControllers($this);
     }
-    
+
     /**
      * Overrides the yii2 default behavior by not throwing an exception if no alias has been defined
      * for the controller namespace. Otherwise each module requires an alias for its first namepsace entry
@@ -261,7 +344,7 @@ abstract class Module extends \yii\base\Module
     public static function onLoad()
     {
     }
-    
+
     /**
      * Register a Translation to the i18n component.
      *
@@ -283,13 +366,15 @@ abstract class Module extends \yii\base\Module
      */
     public static function registerTranslation($prefix, $basePath, array $fileMap)
     {
-        Yii::$app->i18n->translations[$prefix] = [
-            'class' => 'yii\i18n\PhpMessageSource',
-            'basePath' => $basePath,
-            'fileMap' => $fileMap,
-        ];
+        if (!isset(Yii::$app->i18n->translations[$prefix])) {
+            Yii::$app->i18n->translations[$prefix] = [
+                'class' => 'yii\i18n\PhpMessageSource',
+                'basePath' => $basePath,
+                'fileMap' => $fileMap,
+            ];
+        }
     }
-    
+
     /**
      * Get base path from static view port.
      *
@@ -297,18 +382,23 @@ abstract class Module extends \yii\base\Module
      */
     public static function staticBasePath()
     {
-        $class = new \ReflectionClass(get_called_class());
-        
+        $class = new \ReflectionClass(static::class);
+
         return dirname($class->getFileName());
     }
 
     /**
+     * Base translation method which invokes the onLoad function.
      *
-     * @param unknown $category
-     * @param unknown $message
-     * @param array $params
-     * @param unknown $language
-     * @return string
+     * This makes it possible to register module translations without adding the module
+     * to the components list. This is very important for luya extensions.
+     *
+     * @param string $category the message category.
+     * @param string $message the message to be translated.
+     * @param array $params the parameters that will be used to replace the corresponding placeholders in the message.
+     * @param string $language the language code (e.g. `en-US`, `en`). If this is null, the current
+     * [[\yii\base\Application::language|application language]] will be used.
+     * @return string the translated message.
      */
     public static function baseT($category, $message, array $params = [], $language = null)
     {

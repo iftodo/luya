@@ -28,14 +28,22 @@ abstract class BaseBootstrap implements BootstrapInterface
     {
         // add trace
         Yii::beginProfile('LUYA Boostrap process profiling', __METHOD__);
-        
+
+        // register luya core translation message source
+        if (!isset($app->i18n->translations['luya'])) {
+            $app->i18n->translations['luya'] = [
+                'class' => 'yii\i18n\PhpMessageSource',
+                'basePath' => '@luya/messages',
+            ];
+        }
+
         $this->extractModules($app);
         $this->beforeRun($app);
-        $this->registerComponents($app);
+        $this->startModules($app);
         $this->run($app);
-        
+
         // end trace
-        Yii::trace('End of the LUYA bootstraping process', __METHOD__);
+        Yii::debug('End of the LUYA bootstraping process', __METHOD__);
         Yii::endProfile('LUYA Boostrap process profiling');
     }
 
@@ -89,18 +97,21 @@ abstract class BaseBootstrap implements BootstrapInterface
      *
      * @param object $app Luya Appliation `\luya\base\Application`.
      */
-    private function registerComponents($app)
+    private function startModules($app)
     {
         foreach ($this->getModules() as $id => $module) {
             // set an alias for all user modules
             Yii::setAlias('@'.$id, $module->getBasePath());
+
             // see if the module has a registerComponents method
             foreach ($module->registerComponents() as $componentId => $definition) {
                 if (!$app->has($componentId)) {
-                    Yii::trace('Register component ' . $componentId, __METHOD__);
+                    Yii::debug('Register component ' . $componentId, __METHOD__);
                     $app->set($componentId, $definition);
                 }
             }
+
+            $module->luyaBootstrap($app);
         }
     }
 

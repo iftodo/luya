@@ -3,8 +3,8 @@
 namespace luya\web;
 
 use Yii;
-
 use yii\web\BadRequestHttpException;
+use yii\web\NotFoundHttpException;
 
 /**
  * Extended LUYA UrlManager.
@@ -19,6 +19,18 @@ use yii\web\BadRequestHttpException;
  */
 class UrlManager extends \yii\web\UrlManager
 {
+    /**
+     * Defines whether the {{luya\web\Composition}} should override the `Yii::$app->language` from its resolved value or not. If disabled
+     * the Yii::$app->language won't be overriden but you can still access the resolved value with `Yii::$app->composition->langShortCode`.
+     *
+     * Disabling this option can be usefull when working with a website which does not requires the LUYA CMS and you might enable multi lingual
+     * content but on the same routes with a get param f.e. `?_lang=xyz` instead of `/xyz/<slug>`.
+     *
+     * @since 2.0.0
+     * @var boolean Whether the {{luya\web\Composition}} resolved value should override `Yii::$app->language` or not.
+     */
+    public $overrideLanguage = true;
+
     /**
      * @var boolean Pretty urls are enabled by default and can not be turned off in luya cms context.
      */
@@ -58,14 +70,14 @@ class UrlManager extends \yii\web\UrlManager
         if (isset($parts[0]) && $parts[0] == $language) {
             return true;
         }
-        
+
         return false;
     }
-    
+
     /**
      * Extend functionality of parent::parseRequest() by verify and resolve the composition informations.
      *
-     * {@inheritDoc}
+     * @inheritDoc
      *
      * @see \yii\web\UrlManager::parseRequest()
      * @param \luya\web\Request $request The request component.
@@ -75,35 +87,51 @@ class UrlManager extends \yii\web\UrlManager
         // extra data from request to composition, which changes the pathInfo of the Request-Object.
         $resolver = $this->getComposition()->getResolvedPathInfo($request);
 
-        $request->setPathInfo($resolver['route']);
-        
+        try {
+            $request->setPathInfo($resolver->resolvedPath);
+        } catch (NotFoundHttpException $error) {
+            // the resolver has thrown an 404 excpetion, stop parsing request and return false (which is: page not found)
+            return false;
+        }
+
         $parsedRequest = parent::parseRequest($request);
+
+        // if [[enablePrettyUrl]] is `false`. `false` is returned if the current request cannot be successfully parsed.
+        if ($parsedRequest === false) {
+            return false;
+        }
 
         // ensure if the parsed route first match equals the composition pattern.
         // This can be the case when composition is hidden, but not default language is loaded and a
         // url composition route is loaded!
         // @see https://github.com/luyadev/luya/issues/1146
-        $res = $this->routeHasLanguageCompositionPrefix($parsedRequest[0], $resolver['compositionKeys']['langShortCode']);
-        
+        $res = $this->routeHasLanguageCompositionPrefix($parsedRequest[0], $resolver->getResolvedKeyValue(Composition::VAR_LANG_SHORT_CODE));
+
+        if ($this->overrideLanguage) {
+            // set the application language based from the parsed composition request:
+            Yii::$app->setLocale($this->composition->langShortCode);
+            Yii::$app->language = $this->composition->langShortCode;
+        }
+
         // if enableStrictParsing is enabled and the route is not found, $parsedRequest will return `false`.
         if ($res === false && ($this->composition->hidden || $parsedRequest === false)) {
             return $parsedRequest;
         }
-        
+
         $composition = $this->composition->createRoute();
         $length = strlen($composition);
         $route = $parsedRequest[0];
-        
-        if (substr($route, 0, $length+1) == $composition.'/') {
+
+        if (substr($route, 0, $length + 1) == $composition.'/') {
             $parsedRequest[0] = substr($parsedRequest[0], $length);
         }
-        
+
         // remove start trailing slashes from route.
         $parsedRequest[0] = ltrim($parsedRequest[0], '/');
-        
+
         return $parsedRequest;
     }
-    
+
     /**
      * Extend functionality of parent::addRules by the ability to add composition routes.
      *
@@ -114,7 +142,7 @@ class UrlManager extends \yii\web\UrlManager
     public function addRules($rules, $append = true)
     {
         foreach ($rules as $key => $rule) {
-            if (isset($rule['composition'])) {
+            if (is_array($rule) && isset($rule['composition'])) {
                 foreach ($rule['composition'] as $composition => $pattern) {
                     $rules[] = [
                         'pattern' => $pattern,
@@ -157,7 +185,7 @@ class UrlManager extends \yii\web\UrlManager
     {
         $this->_composition = $composition;
     }
-    
+
     /**
      * Get the composition component
      *
@@ -243,12 +271,13 @@ class UrlManager extends \yii\web\UrlManager
      * @param string|array $params Use a string to represent a route (e.g. `site/index`), or an array to represent a route with query parameters (e.g. `['site/index', 'param1' => 'value1']`).
      * @param integer $navItemId The nav item Id
      * @param null|\luya\web\Composition $composition Optional other composition config instead of using the default composition
+     * @param boolean $scheme Whether to use absolute scheme path or not. This can be either `http`, `https`, `true` or `false`
      * @return string
      */
-    public function createMenuItemUrl($params, $navItemId, $composition = null)
+    public function createMenuItemUrl($params, $navItemId, $composition = null, $scheme = false)
     {
-        $composition = (empty($composition)) ? $this->getComposition() : $composition;
-        $url = $this->internalCreateUrl($params, $composition);
+        $composition = empty($composition) ? $this->getComposition() : $composition;
+        $url = $scheme ? $this->internalCreateAbsoluteUrl($params, $scheme, $composition) : $this->internalCreateUrl($params, $composition);
 
         if (!$this->menu) {
             return $url;
@@ -267,19 +296,19 @@ class UrlManager extends \yii\web\UrlManager
     public function internalCreateUrl($params, $composition = null)
     {
         $params = (array) $params;
-        
-        $composition = (empty($composition)) ? $this->getComposition() : $composition;
-        
+
+        $composition = empty($composition) ? $this->getComposition() : $composition;
+
         $originalParams = $params;
-        
+
         // prepand the original route, whether is hidden or not!
         // https://github.com/luyadev/luya/issues/1146
         $params[0] = $composition->prependTo($params[0], $composition->createRoute());
-        
+
         $response = parent::createUrl($params);
 
         // Check if the parsed route with the prepand composition has been found or not.
-        if (strpos($response, $params[0]) !== false) {
+        if (strpos($response, rtrim($params[0], '/')) !== false) {
             // we got back the same url from the createUrl, no match against composition route.
             $response = parent::createUrl($originalParams);
         }
@@ -289,18 +318,19 @@ class UrlManager extends \yii\web\UrlManager
 
         return $this->prependBaseUrl($response);
     }
-    
+
     /**
      * Create absolute url from the given route params.
      *
      * @param string|array $params The see createUrl
      * @param boolean $scheme Whether to use absolute scheme path or not.
+     * @param null|\luya\web\Composition $composition Composition instance to change the route behavior
      * @return string The created url
      */
-    public function internalCreateAbsoluteUrl($params, $scheme = null)
+    public function internalCreateAbsoluteUrl($params, $scheme = null, $composition = null)
     {
         $params = (array) $params;
-        $url = $this->internalCreateUrl($params);
+        $url = $this->internalCreateUrl($params, $composition);
         if (strpos($url, '://') === false) {
             $url = $this->getHostInfo() . $url;
         }
@@ -309,7 +339,7 @@ class UrlManager extends \yii\web\UrlManager
         }
         return $url;
     }
-    
+
     /**
      * See if the module of a provided route exists in the luya application list.
      *
@@ -321,16 +351,16 @@ class UrlManager extends \yii\web\UrlManager
     private function findModuleInRoute($route)
     {
         $route = parse_url($route, PHP_URL_PATH);
-        
+
         $parts = array_values(array_filter(explode('/', $route)));
-        
+
         if (isset($parts[0]) && array_key_exists($parts[0], Yii::$app->getApplicationModules())) {
             return $parts[0];
         }
-    
+
         return false;
     }
-    
+
     /**
      * Replace the url with the current module context.
      *
@@ -343,24 +373,35 @@ class UrlManager extends \yii\web\UrlManager
     private function urlReplaceModule($url, $navItemId, Composition $composition)
     {
         $route = $composition->removeFrom($this->removeBaseUrl($url));
-        $module = $this->findModuleInRoute($route);
-    
-        if ($module === false || $this->menu === false) {
+        $moduleName = $this->findModuleInRoute($route);
+
+        if ($moduleName === false || $this->menu === false) {
             return $url;
         }
-    
-        $item = $this->menu->find()->where(['id' => $navItemId])->with('hidden')->lang($composition['langShortCode'])->one();
-    
+
+        $item = $this->menu->find()->where(['id' => $navItemId])->with('hidden')->lang($composition[Composition::VAR_LANG_SHORT_CODE])->one();
+
         if (!$item) {
             throw new BadRequestHttpException("Unable to find nav_item_id '$navItemId' to generate the module link for url '$url'.");
         }
-    
-        // if the item type is (2) module and the current context module is not equals we don't have to remove to replace the module name
-        // as this is an url rule not related to the current module.
-        if ($item->type == 2 && $module !== $item->moduleName) {
+
+        $isOutgoingModulePage = $item->type == 2 && $moduleName !== $item->moduleName;
+
+        // 1. if the current page is a module and the requested url is not the same module, its an outgoing link to
+        // another module which should not be modificated.
+        // 2. If the current page (nav) context is the homepage, we have to keep the original link as it wont work because the homepage
+        // does not have a route prefix.
+        if ($isOutgoingModulePage || $item->isHome) {
             return $url;
         }
-    
-        return preg_replace("/$module/", rtrim($item->link, '/'), ltrim($route, '/'), 1);
+
+        // 1. if the current page is a module and the requested url is not the same module, its an outgoing link to
+        // another module and ...
+        // 2. if current controller context has an other module as the requested url, its an outgoing link to another module which should not be modificated.
+        if ($isOutgoingModulePage && $moduleName !== Yii::$app->controller->module->id) {
+            return $url;
+        }
+
+        return preg_replace("/$moduleName/", rtrim($item->link, '/'), ltrim($route, '/'), 1);
     }
 }

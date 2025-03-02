@@ -2,12 +2,11 @@
 
 namespace luya\components;
 
-use PHPMailer;
-use SMTP;
-use Yii;
-use yii\base\Controller;
-use yii\base\Component;
 use luya\Exception;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use Yii;
+use yii\base\Component;
 
 /**
  * LUYA mail component to compose messages and send them via SMTP.
@@ -28,7 +27,7 @@ use luya\Exception;
  * swaks -s HOST -p 587 -ehlo localhost -au AUTH_USER -to TO_ADDRESSE -tls
  * ```
  *
- * @property \PHPMailer $mailer The PHP Mailer object
+ * @property \PHPMailer\PHPMailer\PHPMailer $mailer The PHP Mailer object
  *
  * @author Basil Suter <basil@nadar.io>
  * @since 1.0.0
@@ -38,14 +37,14 @@ class Mail extends Component
     private $_mailer;
 
     /**
-     * @var string sender email address
+     * @var string sender email address, like `php@luya.io`.
      */
-    public $from = 'php@zephir.ch';
+    public $from;
 
     /**
-     * @var string sender name
+     * @var string The from sender name like `LUYA Mailer`.
      */
-    public $fromName = 'php@zephir.ch';
+    public $fromName;
 
     /**
      * @var boolean When enabled the debug print is echoed directly into the frontend output, this is built in PHPMailer debug.
@@ -55,8 +54,8 @@ class Mail extends Component
     /**
      * @var string alternate text message if email client doesn't support HTML
      */
-    public $altBody = 'Please use a HTML compatible E-Mail-Client to read this E-Mail.';
-    
+    public $altBody;
+
     /**
      * @var string|boolean Define a layout template file which is going to be wrapped around the body()
      * content. The file alias will be resolved so an example layout could look as followed:
@@ -74,7 +73,7 @@ class Mail extends Component
      * ```
      */
     public $layout = false;
-    
+
     /**
      * @var boolean Whether mailer sends mails trough an an smtp server or via php mail() function. In order to configure the smtp use:
      *
@@ -88,54 +87,53 @@ class Mail extends Component
     public $isSMTP = true;
 
     // smtp settings
-    
+
     /**
-     * @var string The host address of the SMTP server for authentification, if {{Mail::$isSMTP}} is disabled, this property has no effect.
+     * @var string The host address of the SMTP server for authentification like `mail.luya.io`, if {{Mail::$isSMTP}} is disabled, this property has no effect.
      */
-    public $host = 'mail.zephir.ch';
-    
+    public $host;
+
     /**
-     * @var string The username which should be used for SMTP auth, if {{Mail::$isSMTP}} is disabled, this property has no effect.
+     * @var string The username which should be used for SMTP auth e.g `php@luya.io`, if {{Mail::$isSMTP}} is disabled, this property has no effect.
      */
-    public $username = 'php@zephir.ch';
-    
+    public $username;
+
     /**
      * @var string The password which should be used for SMTP auth, if {{Mail::$isSMTP}} is disabled, this property has no effect.
      */
     public $password;
-    
+
     /**
-     * @var integer The port which is used to connect to the SMTP server, if {{Mail::$isSMTP}} is disabled, this property has no effect.
+     * @var integer The port which is used to connect to the SMTP server (default is 587), if {{Mail::$isSMTP}} is disabled, this property has no effect.
      */
     public $port = 587;
-    
+
     /**
-     * @var string Posible values are `tls` or `ssl` or empty ``, if {{Mail::$isSMTP}} is disabled, this property has no effect.
+     * @var string Posible values are `tls` or `ssl` or empty `` (default is tls), if {{Mail::$isSMTP}} is disabled, this property has no effect.
      */
     public $smtpSecure = 'tls';
-    
+
     /**
-     * @var boolean Whether the SMTP requires authentication or not, if {{Mail::$isSMTP}} is disabled, this property has no effect. If
+     * @var boolean Whether the SMTP requires authentication or not, enabled by default. If {{Mail::$isSMTP}} is disabled, this property has no effect. If
      * enabled the following properties can be used:
      * + {{Mail::$username}}
      * + {{Mail::$password}}
      */
     public $smtpAuth = true;
-    
+
     /**
      * Getter for the mailer object
      *
-     * @return \PHPMailer
+     * @return \PHPMailer\PHPMailer\PHPMailer
      */
     public function getMailer()
     {
         if ($this->_mailer === null) {
-            $this->_mailer = new PHPmailer;
+            $this->_mailer = new PHPMailer();
             $this->_mailer->CharSet = 'UTF-8';
-            $this->_mailer->From = $this->from;
-            $this->_mailer->FromName = $this->fromName;
+            $this->_mailer->setFrom((string) $this->from, (string) $this->fromName);
             $this->_mailer->isHTML(true);
-            $this->_mailer->AltBody = $this->altBody;
+            $this->_mailer->XMailer = ' ';
             // if sending over smtp, define the settings for the smpt server
             if ($this->isSMTP) {
                 if ($this->debug) {
@@ -143,8 +141,8 @@ class Mail extends Component
                 }
                 $this->_mailer->isSMTP();
                 $this->_mailer->SMTPSecure = $this->smtpSecure;
-                $this->_mailer->Host = $this->host;
-                $this->_mailer->SMTPAuth= $this->smtpAuth;
+                $this->_mailer->Host = (string) $this->host;
+                $this->_mailer->SMTPAuth = $this->smtpAuth;
                 $this->_mailer->Username = $this->username;
                 $this->_mailer->Password = $this->password;
                 $this->_mailer->Port = $this->port;
@@ -156,7 +154,7 @@ class Mail extends Component
 
         return $this->_mailer;
     }
-    
+
     /**
      * Reset the mailer object to null
      *
@@ -166,9 +164,11 @@ class Mail extends Component
     {
         $this->_mailer = null;
     }
-    
+
     /**
-     * Compose a new mail message, this will first flush existing mailer objects
+     * Compose a new mail message.
+     *
+     * Make sure to change mailer object or global variables after composer command, as before it will flush the mailer object.
      *
      * @param string $subject The subject of the mail
      * @param string $body The HTML body of the mail message.
@@ -185,7 +185,7 @@ class Mail extends Component
         }
         return $this;
     }
-    
+
     /**
      * Set the mail message subject of the mailer instance
      *
@@ -197,7 +197,7 @@ class Mail extends Component
         $this->getMailer()->Subject = $subject;
         return $this;
     }
-    
+
     /**
      * Set the HTML body for the mailer message, if a layout is defined the layout
      * will automatically wrapped about the html body.
@@ -207,8 +207,28 @@ class Mail extends Component
      */
     public function body($body)
     {
-        $this->getMailer()->Body = $this->wrapLayout($body);
+        $message = $this->wrapLayout($body);
+        $this->getMailer()->Body = $message;
+        $alt = empty($this->altBody) ? $this->convertMessageToAltBody($message) : $this->altBody;
+        $this->getMailer()->AltBody = $alt;
         return $this;
+    }
+
+    /**
+     * Try to convert the message into an alt body tag.
+     *
+     * The alt body can only contain chars and newline. Therefore strip all tags and replace ending tags with newlines.
+     * Also remove html head if there is any.
+     *
+     * @param string $message The message to convert into alt body format.
+     * @return string Returns the alt body message compatible content
+     * @since 1.0.11
+     */
+    public function convertMessageToAltBody($message)
+    {
+        $message = preg_replace('/<head>(.*?)<\/head>/s', '', $message);
+        $tags = ['</p>', '<br />', '<br>', '<hr />', '<hr>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>'];
+        return trim(strip_tags(str_replace($tags, PHP_EOL, $message)));
     }
 
     /**
@@ -227,12 +247,12 @@ class Mail extends Component
     public function render($viewFile, array $params = [])
     {
         $this->body(Yii::$app->view->render($viewFile, $params));
-        
+
         return $this;
     }
-    
+
     private $_context = [];
-    
+
     /**
      * Pass option parameters to the layout files.
      *
@@ -242,7 +262,7 @@ class Mail extends Component
     public function context(array $vars)
     {
         $this->_context = $vars;
-        
+
         return $this;
     }
 
@@ -259,14 +279,14 @@ class Mail extends Component
         if ($this->layout === false) {
             return $content;
         }
-        
+
         $view = Yii::$app->getView();
-        
+
         $vars = array_merge($this->_context, ['content' => $content]);
-        
+
         return $view->renderPhpFile(Yii::getAlias($this->layout), $vars);
     }
-    
+
     /**
      * Add multiple addresses into the mailer object.
      *
@@ -294,10 +314,10 @@ class Mail extends Component
                 $this->address($mail, $name);
             }
         }
-        
+
         return $this;
     }
-    
+
     /**
      * Add a single address with optional name
      *
@@ -401,7 +421,7 @@ class Mail extends Component
 
         return $this;
     }
-    
+
     /**
      * Add attachment.
      *
@@ -411,11 +431,11 @@ class Mail extends Component
      */
     public function addAttachment($filePath, $name = null)
     {
-        $this->getMailer()->addAttachment($filePath, empty($name) ? '' : $name);
-        
+        $this->getMailer()->addAttachment($filePath, empty($name) ? pathinfo($filePath, PATHINFO_BASENAME) : $name);
+
         return $this;
     }
-    
+
     /**
      * Add ReplyTo Address.
      *
@@ -426,7 +446,7 @@ class Mail extends Component
     public function addReplyTo($email, $name = null)
     {
         $this->getMailer()->addReplyTo($email, empty($name) ? $email : $name);
-        
+
         return $this;
     }
 
@@ -444,7 +464,6 @@ class Mail extends Component
             Yii::error($this->getError(), __METHOD__);
             return false;
         }
-        
         return true;
     }
 
@@ -459,23 +478,24 @@ class Mail extends Component
     }
 
     /**
-     * @see https://github.com/PHPMailer/PHPMailer/blob/master/examples/smtp_check.phps
+     * Test connection for smtp.
      *
+     * @see https://github.com/PHPMailer/PHPMailer/blob/master/examples/smtp_check.phps
      * @throws Exception
      */
     public function smtpTest($verbose)
     {
         //Create a new SMTP instance
         $smtp = new SMTP();
-        
+
         if ($verbose) {
             // Enable connection-level debug output
             $smtp->do_debug = 3;
         }
-        
+
         try {
             // connect to an SMTP server
-            if ($smtp->connect($this->host, $this->port)) {
+            if ($smtp->connect((string) $this->host, $this->port)) {
                 // yay hello
                 if ($smtp->hello('localhost')) {
                     if ($smtp->authenticate($this->username, $this->password)) {
@@ -490,7 +510,7 @@ class Mail extends Component
             } else {
                 throw new Exception('Connect failed');
             }
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $smtp->quit(true);
             throw new \yii\base\Exception($e->getMessage());
         }
